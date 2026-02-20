@@ -209,7 +209,6 @@ def quiz(message):
         bot.send_message(message.chat.id, f"🎉 Сегодня: {holiday}\n\n{quiz_text}")
 
 
-
 def send_question(chat_id):
     quiz = user_quizzes[chat_id]
     q = quiz["questions"][quiz["current"]]
@@ -332,9 +331,10 @@ def admin_reset(call):
         name = user_data.get("name", f"ID{user_id}")
         last_quiz = user_data.get("last_quiz", "")
         status = "✅ Прошёл сегодня" if last_quiz == datetime.now().strftime("%Y-%m-%d") else "❌ Не проходил"
-        text += f"{name} - {status}\n"
+        text += f"`{name}` - {status}\n"
     
-    bot.edit_message_text(text + "\nВведите имя пользователя:", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text(text + "\nВведите имя пользователя:", call.message.chat.id, call.message.message_id,
+                          parse_mode="Markdown")
     bot.register_next_step_handler(call.message, process_reset_quiz)
 
 
