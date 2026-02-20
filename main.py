@@ -5,6 +5,8 @@ import os
 import json
 from datetime import datetime
 from telebot import types
+import threading
+import time
 
 dotenv.load_dotenv(".env")
 
@@ -149,8 +151,35 @@ def show_leaderboard(call):
 
 @bot.message_handler(commands=['quiz'])
 def quiz(message):
+    data = load_data()
+    user_id = str(message.chat.id)
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    if user_id not in data["users"]:
+        data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(message.from_user), "last_quiz": ""}
+    
+    if data["users"][user_id].get("last_quiz") == today:
+        bot.send_message(message.chat.id, "❌ Вы уже проходили квиз сегодня! Приходите завтра.")
+        return
+    
     holiday, date = get_today_holiday()
     loading_msg = bot.send_message(message.chat.id, "Генерирую квиз...")
+    
+    stop_animation = threading.Event()
+    
+    def animate():
+        dots = [".", "..", "..."]
+        i = 0
+        while not stop_animation.is_set():
+            try:
+                time.sleep(0.5)
+                bot.edit_message_text(f"Генерирую квиз{dots[i % 3]}", message.chat.id, loading_msg.message_id)
+                i += 1
+            except:
+                pass
+    
+    animation_thread = threading.Thread(target=animate)
+    animation_thread.start()
     
     prompt = f"Сегодня {date}, праздник: {holiday}. Придумай 5 интересных вопросов про этот праздник (НЕ про дату празднования). Каждый вопрос в формате:\nВопрос?\nA) вариант\nB) вариант\nC) вариант\nD) вариант\nОтвет: буква\n\nМежду вопросами пустая строка."
     
@@ -160,6 +189,9 @@ def quiz(message):
     ]
     
     quiz_text = ask_yandex_gpt(messages, FOLDER_ID, API_KEY)
+    
+    stop_animation.set()
+    animation_thread.join()
     bot.delete_message(message.chat.id, loading_msg.message_id)
     questions = parse_quiz(quiz_text)
     
@@ -175,6 +207,7 @@ def quiz(message):
         send_question(message.chat.id)
     else:
         bot.send_message(message.chat.id, f"🎉 Сегодня: {holiday}\n\n{quiz_text}")
+
 
 
 def send_question(chat_id):
@@ -228,21 +261,25 @@ def check_answer(call):
         if quiz["score"] == 5:
             data = load_data()
             user_id = str(chat_id)
+            today = datetime.now().strftime("%Y-%m-%d")
             if user_id not in data["users"]:
-                data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(call.from_user)}
+                data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(call.from_user), "last_quiz": ""}
             data["users"][user_id]["name"] = get_user_name(call.from_user)
             data["users"][user_id]["points"] += 1
             data["users"][user_id]["perfect_quizzes"] = data["users"][user_id].get("perfect_quizzes", 0) + 1
             data["users"][user_id]["correct_answers"] = data["users"][user_id].get("correct_answers", 0) + quiz["score"]
+            data["users"][user_id]["last_quiz"] = today
             save_data(data)
             result_text += f"🎁 Вы получили 1 очко! Всего очков: {data['users'][user_id]['points']}"
         else:
             data = load_data()
             user_id = str(chat_id)
+            today = datetime.now().strftime("%Y-%m-%d")
             if user_id not in data["users"]:
-                data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(call.from_user)}
+                data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(call.from_user), "last_quiz": ""}
             data["users"][user_id]["name"] = get_user_name(call.from_user)
             data["users"][user_id]["correct_answers"] = data["users"][user_id].get("correct_answers", 0) + quiz["score"]
+            data["users"][user_id]["last_quiz"] = today
             save_data(data)
         
         bot.send_message(chat_id, result_text)
@@ -270,6 +307,7 @@ def admin(message):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
     markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
+    markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
     bot.send_message(message.chat.id, "🔧 Админ-панель", reply_markup=markup)
 
 
@@ -280,6 +318,24 @@ def admin_add(call):
     bot.answer_callback_query(call.id)
     bot.edit_message_text("Введите данные подарка в формате:\nНазвание|Цена", call.message.chat.id, call.message.message_id)
     bot.register_next_step_handler(call.message, process_add_gift)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_reset")
+def admin_reset(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    bot.answer_callback_query(call.id)
+    
+    data = load_data()
+    text = "Выберите пользователя:\n\n"
+    for user_id, user_data in data["users"].items():
+        name = user_data.get("name", f"ID{user_id}")
+        last_quiz = user_data.get("last_quiz", "")
+        status = "✅ Прошёл сегодня" if last_quiz == datetime.now().strftime("%Y-%m-%d") else "❌ Не проходил"
+        text += f"{name} - {status}\n"
+    
+    bot.edit_message_text(text + "\nВведите имя пользователя:", call.message.chat.id, call.message.message_id)
+    bot.register_next_step_handler(call.message, process_reset_quiz)
 
 
 def process_add_gift(message):
@@ -294,9 +350,38 @@ def process_add_gift(message):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
         markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
+        markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
         bot.send_message(message.chat.id, f"✅ Подарок '{name}' добавлен за {price} очков\n\n🔧 Админ-панель", reply_markup=markup)
     except:
         bot.send_message(message.chat.id, "❌ Ошибка формата")
+
+
+def process_reset_quiz(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    try:
+        search_name = message.text.strip()
+        data = load_data()
+        
+        found_user_id = None
+        for user_id, user_data in data["users"].items():
+            if user_data.get("name", "") == search_name:
+                found_user_id = user_id
+                break
+        
+        if found_user_id:
+            data["users"][found_user_id]["last_quiz"] = ""
+            save_data(data)
+            
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
+            markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
+            markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
+            bot.send_message(message.chat.id, f"✅ Квиз сброшен для пользователя {search_name}\n\n🔧 Админ-панель", reply_markup=markup)
+        else:
+            bot.send_message(message.chat.id, "❌ Пользователь не найден")
+    except:
+        bot.send_message(message.chat.id, "❌ Ошибка")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_list")
@@ -315,6 +400,7 @@ def admin_list(call):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
     markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
+    markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
     bot.edit_message_text(text + "\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 
