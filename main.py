@@ -88,10 +88,10 @@ def clear_history(message):
 def start(message):
     user_id = message.chat.id
     user_histories[user_id] = [
-    {
-        "role": "system",
-        "text": "Ты - учитель математики. Отвечай просто и понятно, используй примеры."
-    }
+        {
+            "role": "system",
+            "text": "Ты - учитель математики. Отвечай просто и понятно, используй примеры."
+        }
     ]
     bot.send_message(user_id, "Это бот для праздничных квизов")
 
