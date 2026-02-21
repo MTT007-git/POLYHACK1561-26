@@ -196,7 +196,7 @@ def generate_daily_quiz():
         data["previous_quiz"] = daily_quiz.copy()
         save_data(data)
     
-    prompt = f"""Сегодня {date}, праздник: {holiday}. Создай разнообразный квиз из 7 вопросов разных типов (НЕ про дату празднования):
+    prompt = f"""Сегодня {date}, праздник: {holiday}. Создай разнообразный квиз из 6 вопросов разных типов (НЕ про дату празднования):
 
 1-2. Тип: multiple_choice
 Формат:
@@ -212,12 +212,7 @@ D) вариант
 Утверждение
 Ответ: Правда/Ложь
 
-5. Тип: open_answer
-Формат:
-Вопрос, требующий развернутого ответа?
-Ответ: правильный ответ
-
-6. Тип: matching
+5. Тип: matching
 Формат:
 Сопоставь:
 1) Событие А
@@ -226,15 +221,15 @@ D) вариант
 A) Дата/факт А
 B) Дата/факт Б
 C) Дата/факт В
-Ответ: 1-A, 2-B, 3-C
+Ответ: случайный порядок (например: 1-C, 2-A, 3-B или 1-B, 2-C, 3-A). НЕ используй порядок 1-A, 2-B, 3-C!
 
-7. Тип: sequence
+6. Тип: sequence
 Формат:
 Расставь в хронологическом порядке:
 A) Событие 1
 B) Событие 2
 C) Событие 3
-Ответ: A, B, C
+Ответ: случайный порядок (например: C, A, B или B, C, A). НЕ используй порядок A, B, C!
 
 Между вопросами пустая строка."""
     
@@ -420,6 +415,9 @@ def leaderboard(message):
         types.InlineKeyboardButton("🏆 5/5 квизы", callback_data="lb_perfect"),
         types.InlineKeyboardButton("✅ Ответы", callback_data="lb_answers")
     )
+    markup.add(
+        types.InlineKeyboardButton("🔥 Стрики", callback_data="lb_streaks")
+    )
     
     if not subscribed:
         markup.add(types.InlineKeyboardButton("🔔 Подписаться на уведомления", callback_data="subscribe"))
@@ -476,6 +474,10 @@ def show_leaderboard(call):
         sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("perfect_quizzes", 0), reverse=True)[:10]
         title = "🏆 Топ-10 по 5/5 квизам"
         key = "perfect_quizzes"
+    elif category == "streaks":
+        sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("streak", 0), reverse=True)[:10]
+        title = "🔥 Топ-10 по стрикам"
+        key = "streak"
     else:
         sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("correct_answers", 0), reverse=True)[:10]
         title = "✅ Топ-10 по правильным ответам"
@@ -498,6 +500,9 @@ def show_leaderboard(call):
     markup.add(
         types.InlineKeyboardButton("🏆 5/5 квизы", callback_data="lb_perfect"),
         types.InlineKeyboardButton("✅ Ответы", callback_data="lb_answers")
+    )
+    markup.add(
+        types.InlineKeyboardButton("🔥 Стрики", callback_data="lb_streaks")
     )
     
     bot.edit_message_text(text + "\n📊 Выберите категорию:", call.message.chat.id, call.message.message_id, reply_markup=markup)
@@ -573,12 +578,6 @@ def send_question(chat_id):
             types.InlineKeyboardButton("❌ Ложь", callback_data="ans_Ложь")
         )
         msg = bot.send_message(chat_id, f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}", reply_markup=markup)
-    
-    elif q_type == "open_answer":
-        msg = bot.send_message(chat_id, f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n\n💬 Введите ваш ответ:")
-        bot.register_next_step_handler(msg, lambda m: process_open_answer(m, chat_id))
-        quiz["last_msg_id"] = msg.message_id
-        return
     
     elif q_type == "matching":
         items_text = "\n".join(q["items"])
@@ -1058,27 +1057,56 @@ def finish_quiz(chat_id, user):
         "total": len(quiz["questions"])
     }
     
+    # Обновляем стрик
+    last_quiz_date = data["users"][user_id].get("last_quiz", "")
+    current_streak = data["users"][user_id].get("streak", 0)
+    
+    if last_quiz_date:
+        from datetime import datetime as dt, timedelta
+        try:
+            last_date = dt.strptime(last_quiz_date, "%Y-%m-%d")
+            current_date = dt.strptime(today, "%Y-%m-%d")
+            days_diff = (current_date - last_date).days
+            
+            if days_diff == 1:
+                # Продолжение стрика
+                current_streak += 1
+            elif days_diff > 1:
+                # Стрик прерван
+                current_streak = 1
+            else:
+                # Тот же день (не должно происходить)
+                pass
+        except:
+            current_streak = 1
+    else:
+        current_streak = 1
+    
+    data["users"][user_id]["streak"] = current_streak
+    streak_bonus = current_streak  # +1 очко за каждый день стрика
+    
     data["users"][user_id]["name"] = get_user_name(user)
     data["users"][user_id]["correct_answers"] = data["users"][user_id].get("correct_answers", 0) + quiz["score"]
     data["users"][user_id]["last_quiz"] = quiz.get("start_date")
-    data["users"][user_id]["points"] += total_points
+    data["users"][user_id]["points"] += total_points + streak_bonus
     
     subscribed = data.get("notifications", {}).get(user_id, True)
     
     # Краткий результат без деталей
     result_text = f"🎊 Квиз завершён!\n\n"
-    result_text += f"✅ Правильных ответов: {quiz['score']}/{len(quiz['questions'])}\n\n"
+    result_text += f"✅ Правильных ответов: {quiz['score']}/{len(quiz['questions'])}\n"
+    result_text += f"🔥 Стрик: {current_streak} дней (+{streak_bonus} очков)\n\n"
     
     if quiz["score"] == len(quiz["questions"]):
         data["users"][user_id]["perfect_quizzes"] = data["users"][user_id].get("perfect_quizzes", 0) + 1
         save_data(data)
-        result_text += f"🎁 Идеально! Вы получили {total_points} очков!\n"
-        result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение, +{perfect_bonus} бонус)\n"
+        result_text += f"🎁 Идеально! Вы получили {total_points + streak_bonus} очков!\n"
+        result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение, +{perfect_bonus} бонус, +{streak_bonus} стрик)\n"
         result_text += f"Всего очков: {data['users'][user_id]['points']}"
     else:
         save_data(data)
-        result_text += f"💰 Вы получили {total_points} очков!\n"
-        result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение)\n"
+        result_text += f"💰 Вы получили {total_points + streak_bonus} очков!\n"
+        result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение, +{streak_bonus} стрик)\n"
         result_text += f"Всего очков: {data['users'][user_id]['points']}"
     
     if not subscribed:
