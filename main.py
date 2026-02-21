@@ -94,6 +94,14 @@ def get_user_name(user):
     return user.first_name or f"ID{user.id}"
 
 
+def get_current_date():
+    """Возвращает текущую дату с учетом override_date из админки"""
+    data = load_data()
+    if "override_date" in data and data["override_date"]:
+        return data["override_date"]
+    return datetime.now().strftime("%Y-%m-%d")
+
+
 def get_today_holiday():
     now = datetime.now()
     month = str(now.month)
@@ -186,7 +194,7 @@ def parse_quiz(text):
 def generate_daily_quiz():
     global daily_quiz
     holiday, date = get_today_holiday()
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     
     print(f"Генерация квиза на {date}...")
     
@@ -360,6 +368,15 @@ def start_quiz_callback(call):
         bot.answer_callback_query(call.id)
     except:
         pass
+    
+    # Проверка, не начат ли уже квиз
+    if call.message.chat.id in user_quizzes:
+        try:
+            bot.answer_callback_query(call.id, "❌ Вы уже начали квиз!")
+        except:
+            pass
+        return
+    
     bot.delete_message(call.message.chat.id, call.message.message_id)
     quiz(call.message)
 
@@ -414,9 +431,6 @@ def leaderboard(message):
     markup.add(
         types.InlineKeyboardButton("🏆 5/5 квизы", callback_data="lb_perfect"),
         types.InlineKeyboardButton("✅ Ответы", callback_data="lb_answers")
-    )
-    markup.add(
-        types.InlineKeyboardButton("🔥 Стрики", callback_data="lb_streaks")
     )
     
     if not subscribed:
@@ -474,10 +488,6 @@ def show_leaderboard(call):
         sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("perfect_quizzes", 0), reverse=True)[:10]
         title = "🏆 Топ-10 по 5/5 квизам"
         key = "perfect_quizzes"
-    elif category == "streaks":
-        sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("streak", 0), reverse=True)[:10]
-        title = "🔥 Топ-10 по стрикам"
-        key = "streak"
     else:
         sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("correct_answers", 0), reverse=True)[:10]
         title = "✅ Топ-10 по правильным ответам"
@@ -501,9 +511,6 @@ def show_leaderboard(call):
         types.InlineKeyboardButton("🏆 5/5 квизы", callback_data="lb_perfect"),
         types.InlineKeyboardButton("✅ Ответы", callback_data="lb_answers")
     )
-    markup.add(
-        types.InlineKeyboardButton("🔥 Стрики", callback_data="lb_streaks")
-    )
     
     bot.edit_message_text(text + "\n📊 Выберите категорию:", call.message.chat.id, call.message.message_id, reply_markup=markup)
     try:
@@ -518,12 +525,23 @@ def quiz(message):
         return
     data = load_data()
     user_id = str(message.chat.id)
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     subscribed = data.get("notifications", {}).get(user_id, True)
     
     if user_id not in data["users"]:
         data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(message.from_user), "last_quiz": "", "registered": True}
         save_data(data)
+    
+    # Проверка, не начат ли уже квиз
+    if message.chat.id in user_quizzes:
+        text = "❌ Вы уже начали квиз! Завершите его, прежде чем начинать новый."
+        if not subscribed:
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("🔔 Подписаться на уведомления", callback_data="subscribe"))
+            bot.send_message(message.chat.id, text, reply_markup=markup)
+        else:
+            bot.send_message(message.chat.id, text)
+        return
     
     if data["users"][user_id].get("last_quiz") == today:
         text = "❌ Вы уже проходили квиз сегодня! Приходите завтра."
@@ -630,7 +648,7 @@ def handle_matching(call):
         return
     
     quiz = user_quizzes[chat_id]
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     
     if quiz.get("start_date") != today:
         try:
@@ -782,7 +800,7 @@ def handle_sequence(call):
         return
     
     quiz = user_quizzes[chat_id]
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     
     if quiz.get("start_date") != today:
         try:
@@ -864,7 +882,7 @@ def check_answer(call):
         return
     
     quiz = user_quizzes[chat_id]
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     
     # Проверка смены дня
     if quiz.get("start_date") != today:
@@ -913,7 +931,7 @@ def process_open_answer(message, chat_id):
         return
     
     quiz = user_quizzes[chat_id]
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     
     # Проверка смены дня
     if quiz.get("start_date") != today:
@@ -973,7 +991,7 @@ def process_matching_answer(message, chat_id):
         return
     
     quiz = user_quizzes[chat_id]
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     
     # Проверка смены дня
     if quiz.get("start_date") != today:
@@ -1025,7 +1043,7 @@ def process_sequence_answer(message, chat_id):
         return
     
     quiz = user_quizzes[chat_id]
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     
     # Проверка смены дня
     if quiz.get("start_date") != today:
@@ -1077,7 +1095,7 @@ def finish_quiz(chat_id, user):
         return
     
     quiz = user_quizzes[chat_id]
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     
     # Проверка смены дня при завершении
     if quiz.get("start_date") != today:
@@ -1106,56 +1124,27 @@ def finish_quiz(chat_id, user):
         "total": len(quiz["questions"])
     }
     
-    # Обновляем стрик
-    last_quiz_date = data["users"][user_id].get("last_quiz", "")
-    current_streak = data["users"][user_id].get("streak", 0)
-    
-    if last_quiz_date:
-        from datetime import datetime as dt, timedelta
-        try:
-            last_date = dt.strptime(last_quiz_date, "%Y-%m-%d")
-            current_date = dt.strptime(today, "%Y-%m-%d")
-            days_diff = (current_date - last_date).days
-            
-            if days_diff == 0:
-                # Тот же день - стрик не меняется
-                pass
-            elif days_diff == 1:
-                # Следующий день - продолжение стрика
-                current_streak += 1
-            elif days_diff > 1:
-                # Стрик прерван
-                current_streak = 1
-        except Exception as e:
-            current_streak = 1
-    else:
-        current_streak = 1
-    
-    data["users"][user_id]["streak"] = current_streak
-    streak_bonus = current_streak  # +1 очко за каждый день стрика
-    
     data["users"][user_id]["name"] = get_user_name(user)
     data["users"][user_id]["correct_answers"] = data["users"][user_id].get("correct_answers", 0) + quiz["score"]
     data["users"][user_id]["last_quiz"] = quiz.get("start_date")
-    data["users"][user_id]["points"] += total_points + streak_bonus
+    data["users"][user_id]["points"] += total_points
     
     subscribed = data.get("notifications", {}).get(user_id, True)
     
     # Краткий результат без деталей
     result_text = f"🎊 Квиз завершён!\n\n"
-    result_text += f"✅ Правильных ответов: {quiz['score']}/{len(quiz['questions'])}\n"
-    result_text += f"🔥 Стрик: {current_streak} дней (+{streak_bonus} очков)\n\n"
+    result_text += f"✅ Правильных ответов: {quiz['score']}/{len(quiz['questions'])}\n\n"
     
     if quiz["score"] == len(quiz["questions"]):
         data["users"][user_id]["perfect_quizzes"] = data["users"][user_id].get("perfect_quizzes", 0) + 1
         save_data(data)
-        result_text += f"🎁 Идеально! Вы получили {total_points + streak_bonus} очков!\n"
-        result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение, +{perfect_bonus} бонус, +{streak_bonus} стрик)\n"
+        result_text += f"🎁 Идеально! Вы получили {total_points} очков!\n"
+        result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение, +{perfect_bonus} бонус)\n"
         result_text += f"Всего очков: {data['users'][user_id]['points']}"
     else:
         save_data(data)
-        result_text += f"💰 Вы получили {total_points + streak_bonus} очков!\n"
-        result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение, +{streak_bonus} стрик)\n"
+        result_text += f"💰 Вы получили {total_points} очков!\n"
+        result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение)\n"
         result_text += f"Всего очков: {data['users'][user_id]['points']}"
     
     if not subscribed:
@@ -1191,12 +1180,8 @@ def balance(message):
         bot.send_message(message.chat.id, text)
 
 
-@bot.message_handler(commands=['admin'])
-def admin(message):
-    if message.chat.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "❌ Доступ запрещён")
-        return
-    
+def get_admin_markup():
+    """Возвращает клавиатуру админ-панели"""
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
     markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
@@ -1204,7 +1189,17 @@ def admin(message):
     markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
     markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
     markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-    bot.send_message(message.chat.id, "🔧 Админ-панель", reply_markup=markup)
+    markup.add(types.InlineKeyboardButton("📅 Установить дату", callback_data="admin_date"))
+    return markup
+
+
+@bot.message_handler(commands=['admin'])
+def admin(message):
+    if message.chat.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "❌ Доступ запрещён")
+        return
+    
+    bot.send_message(message.chat.id, "🔧 Админ-панель", reply_markup=get_admin_markup())
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add")
@@ -1228,7 +1223,7 @@ def admin_notify(call):
     except:
         pass
     
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     if not daily_quiz or daily_quiz.get("date") != today:
         bot.edit_message_text("❌ Квиз на сегодня еще не создан. Используйте /generate_quiz для создания.", call.message.chat.id, call.message.message_id)
         return
@@ -1256,7 +1251,7 @@ def admin_regenerate(call):
     
     # Очищаем last_quiz у всех пользователей чтобы они могли пройти новый квиз
     data = load_data()
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_current_date()
     for user_id in data["users"]:
         if data["users"][user_id].get("last_quiz") == today:
             data["users"][user_id]["last_quiz"] = ""
@@ -1297,6 +1292,63 @@ def admin_points(call):
     bot.register_next_step_handler(call.message, process_add_points)
 
 
+@bot.callback_query_handler(func=lambda call: call.data == "admin_date")
+def admin_date(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    data = load_data()
+    current_date = data.get("override_date", "Автоматически")
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔄 Автоматически", callback_data="date_auto"))
+    markup.add(types.InlineKeyboardButton("📝 Установить вручную", callback_data="date_manual"))
+    
+    bot.edit_message_text(f"📅 Текущая дата: {current_date}\n\nВыберите режим:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "date_auto")
+def date_auto(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    data = load_data()
+    if "override_date" in data:
+        del data["override_date"]
+    save_data(data)
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
+    markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
+    markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
+    markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
+    markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
+    markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
+    markup.add(types.InlineKeyboardButton("📅 Установить дату", callback_data="admin_date"))
+    bot.edit_message_text("✅ Дата установлена на автоматическую\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "date_manual")
+def date_manual(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    bot.edit_message_text("Введите дату в формате ДД.ММ.ГГГГ:\nПример: 21.02.2026", call.message.chat.id, call.message.message_id)
+    bot.register_next_step_handler(call.message, process_set_date)
+
+
 @bot.callback_query_handler(func=lambda call: call.data == "admin_reset")
 def admin_reset(call):
     if call.message.chat.id != ADMIN_ID:
@@ -1328,6 +1380,33 @@ def generate_quiz_cmd(message):
     bot.send_message(message.chat.id, "⏳ Генерирую квиз...")
     generate_daily_quiz()
     bot.send_message(message.chat.id, "✅ Квиз создан и уведомления отправлены!")
+
+
+def process_set_date(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    try:
+        from datetime import datetime as dt
+        date_str = message.text.strip()
+        # Парсим дату в формате ДД.ММ.ГГГГ
+        date_obj = dt.strptime(date_str, "%d.%m.%Y")
+        formatted_date = date_obj.strftime("%Y-%m-%d")
+        
+        data = load_data()
+        data["override_date"] = formatted_date
+        save_data(data)
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
+        markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
+        markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
+        markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
+        markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
+        markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
+        markup.add(types.InlineKeyboardButton("📅 Установить дату", callback_data="admin_date"))
+        bot.send_message(message.chat.id, f"✅ Дата установлена: {date_str}\n\n🔧 Админ-панель", reply_markup=markup)
+    except:
+        bot.send_message(message.chat.id, "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ")
 
 
 def process_add_points(message):
