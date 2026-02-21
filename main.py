@@ -571,9 +571,12 @@ def profile(message):
     gifts = user.get("gifts_bought", 0)
     xp = user.get("xp", 0)
     level = user.get("level", 0)
+    current_level_xp = get_current_level_xp(level)
     next_level_xp = calculate_xp_for_next_level(level)
+    xp_in_level = xp - current_level_xp
+    xp_needed = next_level_xp - current_level_xp
     
-    text = f"👤 {name}\n📚 Класс: {class_name}\n⭐ Уровень: {level} ({xp}/{next_level_xp} XP)\n\n💰 Очки: {points}\n🏆 Идеальных квизов: {perfect}\n✅ Правильных ответов: {correct}\n🎁 Куплено подарков: {gifts}"
+    text = f"👤 {name}\n📚 Класс: {class_name}\n⭐ Уровень: {level} ({xp_in_level}/{xp_needed} XP)\n\n💰 Очки: {points}\n🏆 Идеальных квизов: {perfect}\n✅ Правильных ответов: {correct}\n🎁 Куплено подарков: {gifts}"
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📸 Изменить фото", callback_data="change_photo"))
@@ -758,9 +761,12 @@ def view_profile(call):
     gifts = user.get("gifts_bought", 0)
     xp = user.get("xp", 0)
     level = user.get("level", 0)
+    current_level_xp = get_current_level_xp(level)
     next_level_xp = calculate_xp_for_next_level(level)
+    xp_in_level = xp - current_level_xp
+    xp_needed = next_level_xp - current_level_xp
     
-    text = f"👤 {name}\n📚 Класс: {class_name}\n⭐ Уровень: {level} ({xp}/{next_level_xp} XP)\n\n💰 Очки: {points}\n🏆 Идеальных квизов: {perfect}\n✅ Правильных ответов: {correct}\n🎁 Куплено подарков: {gifts}"
+    text = f"👤 {name}\n📚 Класс: {class_name}\n⭐ Уровень: {level} ({xp_in_level}/{xp_needed} XP)\n\n💰 Очки: {points}\n🏆 Идеальных квизов: {perfect}\n✅ Правильных ответов: {correct}\n🎁 Куплено подарков: {gifts}"
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("◀️ Назад к рейтингу", callback_data="back_to_lb"))
@@ -1411,13 +1417,41 @@ def process_sequence_answer(message, chat_id):
 
 
 def calculate_level(xp):
-    """Вычисляет уровень по опыту (100 XP = 1 уровень)"""
-    return xp // 100
+    """Вычисляет уровень по опыту (экспоненциальная прогрессия: 100, 200, 400, 800...)"""
+    level = 0
+    required_xp = 100
+    total_xp = 0
+    
+    while total_xp + required_xp <= xp:
+        total_xp += required_xp
+        level += 1
+        required_xp *= 2
+    
+    return level
 
 
 def calculate_xp_for_next_level(level):
-    """Вычисляет XP для следующего уровня"""
-    return (level + 1) * 100
+    """Вычисляет общий XP для достижения следующего уровня"""
+    total_xp = 0
+    required_xp = 100
+    
+    for i in range(level + 1):
+        total_xp += required_xp
+        required_xp *= 2
+    
+    return total_xp
+
+
+def get_current_level_xp(level):
+    """Вычисляет общий XP для текущего уровня"""
+    total_xp = 0
+    required_xp = 100
+    
+    for i in range(level):
+        total_xp += required_xp
+        required_xp *= 2
+    
+    return total_xp
 
 
 def finish_quiz(chat_id, user):
