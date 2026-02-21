@@ -583,18 +583,25 @@ def send_question(chat_id):
         items_text = "\n".join(q["items"])
         quiz["matching_state"] = {"selections": []}
         
-        # Показываем оба ряда кнопок
+        # Показываем оба столбца кнопок
         markup = types.InlineKeyboardMarkup(row_width=2)
         left_items = [item for item in q["items"] if item[0] in ['1', '2', '3', '4', '5']]
         right_items = [item for item in q["items"] if item[0] in ['A', 'B', 'C', 'D', 'E']]
         
-        # Левый ряд
-        for item in left_items:
-            markup.add(types.InlineKeyboardButton(f"◻️ {item}", callback_data=f"match_left_{item[0]}"))
+        # Создаем два столбца
+        for left, right in zip(left_items, right_items):
+            markup.row(
+                types.InlineKeyboardButton(f"◻️ {left}", callback_data=f"match_left_{left[0]}"),
+                types.InlineKeyboardButton(f"◻️ {right}", callback_data=f"match_right_{right[0]}")
+            )
         
-        # Правый ряд
-        for item in right_items:
-            markup.add(types.InlineKeyboardButton(f"◻️ {item}", callback_data=f"match_right_{item[0]}"))
+        # Если количество элементов не совпадает, добавляем оставшиеся
+        if len(left_items) > len(right_items):
+            for item in left_items[len(right_items):]:
+                markup.add(types.InlineKeyboardButton(f"◻️ {item}", callback_data=f"match_left_{item[0]}"))
+        elif len(right_items) > len(left_items):
+            for item in right_items[len(left_items):]:
+                markup.add(types.InlineKeyboardButton(f"◻️ {item}", callback_data=f"match_right_{item[0]}"))
         
         msg = bot.send_message(chat_id, f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n{items_text}\n\n👆 Выберите пару (сначала слева, потом справа):", reply_markup=markup)
     
@@ -636,11 +643,41 @@ def handle_matching(call):
     
     q = quiz["questions"][quiz["current"]]
     state = quiz["matching_state"]
+    left_items = [item for item in q["items"] if item[0] in ['1', '2', '3', '4', '5']]
+    right_items = [item for item in q["items"] if item[0] in ['A', 'B', 'C', 'D', 'E']]
     
     if call.data.startswith("match_left_"):
         # Выбрали левый элемент
         left_choice = call.data.split("_")[-1]
         state["current_left"] = left_choice
+        
+        # Обновляем кнопки с желтым квадратом для выбранного левого элемента
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        
+        for left, right in zip(left_items, right_items):
+            left_selected = any(sel.startswith(f"{left[0]}-") for sel in state["selections"])
+            right_selected = any(sel.endswith(f"-{right[0]}") for sel in state["selections"])
+            
+            # Желтый квадрат для текущего выбора слева
+            if left[0] == left_choice and not left_selected:
+                left_icon = "🟨"
+            elif left_selected:
+                left_icon = "✅"
+            else:
+                left_icon = "◻️"
+            
+            right_icon = "✅" if right_selected else "◻️"
+            
+            markup.row(
+                types.InlineKeyboardButton(f"{left_icon} {left}", callback_data=f"match_left_{left[0]}"),
+                types.InlineKeyboardButton(f"{right_icon} {right}", callback_data=f"match_right_{right[0]}")
+            )
+        
+        items_text = "\n".join(q["items"])
+        bot.edit_message_text(
+            f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n{items_text}\n\nВыбрано: {left_choice}\n👆 Теперь выберите справа:",
+            chat_id, call.message.message_id, reply_markup=markup
+        )
         try:
             bot.answer_callback_query(call.id, f"Выбрано: {left_choice}. Теперь выберите справа.")
         except:
@@ -699,17 +736,28 @@ def handle_matching(call):
             markup = types.InlineKeyboardMarkup(row_width=2)
             right_items = [item for item in q["items"] if item[0] in ['A', 'B', 'C', 'D', 'E']]
             
-            # Левый ряд
-            for item in left_items:
-                is_selected = any(sel.startswith(f"{item[0]}-") for sel in state["selections"])
-                icon = "✅" if is_selected else "◻️"
-                markup.add(types.InlineKeyboardButton(f"{icon} {item}", callback_data=f"match_left_{item[0]}"))
+            # Создаем два столбца с отметками
+            for left, right in zip(left_items, right_items):
+                left_selected = any(sel.startswith(f"{left[0]}-") for sel in state["selections"])
+                right_selected = any(sel.endswith(f"-{right[0]}") for sel in state["selections"])
+                left_icon = "✅" if left_selected else "◻️"
+                right_icon = "✅" if right_selected else "◻️"
+                markup.row(
+                    types.InlineKeyboardButton(f"{left_icon} {left}", callback_data=f"match_left_{left[0]}"),
+                    types.InlineKeyboardButton(f"{right_icon} {right}", callback_data=f"match_right_{right[0]}")
+                )
             
-            # Правый ряд
-            for item in right_items:
-                is_selected = any(sel.endswith(f"-{item[0]}") for sel in state["selections"])
-                icon = "✅" if is_selected else "◻️"
-                markup.add(types.InlineKeyboardButton(f"{icon} {item}", callback_data=f"match_right_{item[0]}"))
+            # Если количество элементов не совпадает, добавляем оставшиеся
+            if len(left_items) > len(right_items):
+                for item in left_items[len(right_items):]:
+                    is_selected = any(sel.startswith(f"{item[0]}-") for sel in state["selections"])
+                    icon = "✅" if is_selected else "◻️"
+                    markup.add(types.InlineKeyboardButton(f"{icon} {item}", callback_data=f"match_left_{item[0]}"))
+            elif len(right_items) > len(left_items):
+                for item in right_items[len(left_items):]:
+                    is_selected = any(sel.endswith(f"-{item[0]}") for sel in state["selections"])
+                    icon = "✅" if is_selected else "◻️"
+                    markup.add(types.InlineKeyboardButton(f"{icon} {item}", callback_data=f"match_right_{item[0]}"))
             
             selections_text = ", ".join(state["selections"])
             items_text = "\n".join(q["items"])
@@ -1046,6 +1094,7 @@ def finish_quiz(chat_id, user):
     # Сохраняем результаты пользователя для просмотра позже
     data = load_data()
     user_id = str(chat_id)
+    
     if user_id not in data["users"]:
         data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(user), "last_quiz": "", "registered": True}
     
@@ -1068,16 +1117,16 @@ def finish_quiz(chat_id, user):
             current_date = dt.strptime(today, "%Y-%m-%d")
             days_diff = (current_date - last_date).days
             
-            if days_diff == 1:
-                # Продолжение стрика
+            if days_diff == 0:
+                # Тот же день - стрик не меняется
+                pass
+            elif days_diff == 1:
+                # Следующий день - продолжение стрика
                 current_streak += 1
             elif days_diff > 1:
                 # Стрик прерван
                 current_streak = 1
-            else:
-                # Тот же день (не должно происходить)
-                pass
-        except:
+        except Exception as e:
             current_streak = 1
     else:
         current_streak = 1
@@ -1204,6 +1253,17 @@ def admin_regenerate(call):
         bot.answer_callback_query(call.id, "⏳ Генерирую квиз...")
     except:
         pass
+    
+    # Очищаем last_quiz у всех пользователей чтобы они могли пройти новый квиз
+    data = load_data()
+    today = datetime.now().strftime("%Y-%m-%d")
+    for user_id in data["users"]:
+        if data["users"][user_id].get("last_quiz") == today:
+            data["users"][user_id]["last_quiz"] = ""
+    save_data(data)
+    
+    # Очищаем активные квизы
+    user_quizzes.clear()
     
     generate_daily_quiz()
     
@@ -1337,8 +1397,13 @@ def process_reset_quiz(message):
                 break
         
         if found_user_id:
+            # Очищаем last_quiz чтобы пользователь мог пройти квиз снова
             data["users"][found_user_id]["last_quiz"] = ""
             save_data(data)
+            
+            # Также удаляем активный квиз если он есть
+            if int(found_user_id) in user_quizzes:
+                del user_quizzes[int(found_user_id)]
             
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
@@ -1464,3 +1529,4 @@ while True:
         break
     except Exception as e:
         print(f"Exception: {e}")
+        time.sleep(1)
