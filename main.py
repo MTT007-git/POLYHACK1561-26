@@ -243,6 +243,14 @@ def parse_quiz(text):
     return questions
 
 
+def get_difficulty_multiplier():
+    """Возвращает множитель очков в зависимости от сложности квиза"""
+    data = load_data()
+    difficulty = data.get("quiz_difficulty", "Средний")
+    multipliers = {"Легкий": 1, "Средний": 2, "Сложный": 3}
+    return multipliers.get(difficulty, 2)
+
+
 def generate_daily_quiz():
     global daily_quiz
     holiday, date = get_today_holiday()
@@ -259,6 +267,14 @@ def generate_daily_quiz():
     # Проверяем, установлена ли кастомная тема или предмет
     custom_theme = data.get("quiz_theme")
     custom_subject = data.get("quiz_subject")
+    difficulty = data.get("quiz_difficulty")
+    
+    # Если сложность не установлена, выбираем случайную
+    if not difficulty:
+        import random
+        difficulty = random.choice(["Легкий", "Средний", "Сложный"])
+        data["quiz_difficulty"] = difficulty
+        save_data(data)
     
     if custom_theme:
         topic = f"тема: {custom_theme}"
@@ -266,8 +282,9 @@ def generate_daily_quiz():
         topic = f"праздник: {holiday}"
     
     subject_filter = f" Все вопросы должны быть по предмету: {custom_subject}." if custom_subject else ""
+    difficulty_instruction = f" Уровень сложности: {difficulty}."
     
-    prompt = f"""Сегодня {date}, {topic}. Создай разнообразный квиз из 6 вопросов разных типов (НЕ про дату празднования).{subject_filter}
+    prompt = f"""Сегодня {date}, {topic}. Создай разнообразный квиз из 6 вопросов разных типов (НЕ про дату празднования).{subject_filter}{difficulty_instruction}
 
 1-2. Тип: multiple_choice
 Формат:
@@ -458,7 +475,10 @@ def unsubscribe(call):
         bot.answer_callback_query(call.id, "🔕 Вы отписались от уведомлений")
     except:
         pass
-    bot.edit_message_text("Вы отписались от уведомлений о новых квизах.\nИспользуйте /quiz чтобы пройти квиз.", call.message.chat.id, call.message.message_id)
+    try:
+        bot.edit_message_text("Вы отписались от уведомлений о новых квизах.\nИспользуйте /quiz чтобы пройти квиз.", call.message.chat.id, call.message.message_id)
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "start_quiz")
@@ -470,7 +490,10 @@ def start_quiz_callback(call):
             bot.answer_callback_query(call.id, "❌ Необходимо зарегистрироваться")
         except:
             pass
-        bot.delete_message(call.message.chat.id, call.message.message_id)
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
         check_registration(call.message)
         return
     try:
@@ -485,8 +508,11 @@ def start_quiz_callback(call):
         except:
             pass
         return
-    
-    bot.delete_message(call.message.chat.id, call.message.message_id)
+
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
     quiz(call.message)
 
 
@@ -514,7 +540,7 @@ def start(message):
     user_id = str(message.chat.id)
     subscribed = data.get("notifications", {}).get(user_id, True)
     
-    text = "Это бот для праздничных квизов.\n/quiz - квиз про сегодняшний праздник\n/shop - магазин подарков\n/balance - ваш баланс\n/leaderboard - топ игроков\n/notifications - управление уведомлениями"
+    text = "Это бот для праздничных квизов.\n/quiz - квиз про сегодняшний праздник\n/profile - ваш профиль\n/shop - магазин подарков\n/balance - ваш баланс\n/leaderboard - топ игроков\n/notifications - управление уведомлениями"
     
     if not subscribed:
         markup = types.InlineKeyboardMarkup()
@@ -522,6 +548,65 @@ def start(message):
         bot.send_message(message.chat.id, text, reply_markup=markup)
     else:
         bot.send_message(message.chat.id, text)
+
+
+@bot.message_handler(commands=['profile'])
+def profile(message):
+    if not check_registration(message):
+        return
+    
+    user_id = str(message.chat.id)
+    data = load_data()
+    user = data["users"].get(user_id, {})
+    
+    photo = user.get("photo")
+    name = user.get("name", "Пользователь")
+    class_name = user.get("class", "Не указан")
+    points = user.get("points", 0)
+    perfect = user.get("perfect_quizzes", 0)
+    correct = user.get("correct_answers", 0)
+    gifts = user.get("gifts_bought", 0)
+    xp = user.get("xp", 0)
+    level = user.get("level", 0)
+    next_level_xp = calculate_xp_for_next_level(level)
+    
+    text = f"👤 {name}\n📚 Класс: {class_name}\n⭐ Уровень: {level} ({xp}/{next_level_xp} XP)\n\n💰 Очки: {points}\n🏆 Идеальных квизов: {perfect}\n✅ Правильных ответов: {correct}\n🎁 Куплено подарков: {gifts}"
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📸 Изменить фото", callback_data="change_photo"))
+    
+    if photo:
+        bot.send_photo(message.chat.id, photo, caption=text, reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, text, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "change_photo")
+def change_photo(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    bot.send_message(call.message.chat.id, "📸 Отправьте фото для профиля:")
+    bot.register_next_step_handler(call.message, process_photo)
+
+
+def process_photo(message):
+    if message.content_type != 'photo':
+        bot.send_message(message.chat.id, "❌ Пожалуйста, отправьте фото")
+        return
+    
+    user_id = str(message.chat.id)
+    photo_id = message.photo[-1].file_id
+    
+    data = load_data()
+    if user_id in data["users"]:
+        data["users"][user_id]["photo"] = photo_id
+        save_data(data)
+        bot.send_message(message.chat.id, "✅ Фото профиля обновлено!")
+    else:
+        bot.send_message(message.chat.id, "❌ Ошибка: пользователь не найден")
 
 
 @bot.message_handler(commands=['leaderboard'])
@@ -540,6 +625,9 @@ def leaderboard(message):
     markup.add(
         types.InlineKeyboardButton("🏆 5/5 квизы", callback_data="lb_perfect"),
         types.InlineKeyboardButton("✅ Ответы", callback_data="lb_answers")
+    )
+    markup.add(
+        types.InlineKeyboardButton("⭐ Уровни", callback_data="lb_levels")
     )
     
     if not subscribed:
@@ -597,35 +685,123 @@ def show_leaderboard(call):
         sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("perfect_quizzes", 0), reverse=True)[:10]
         title = "🏆 Топ-10 по 5/5 квизам"
         key = "perfect_quizzes"
+    elif category == "levels":
+        sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("level", 0), reverse=True)[:10]
+        title = "⭐ Топ-10 по уровням"
+        key = "level"
     else:
         sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("correct_answers", 0), reverse=True)[:10]
         title = "✅ Топ-10 по правильным ответам"
         key = "correct_answers"
     
     text = f"{title}\n\n"
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
     for i, (user_id, user_data) in enumerate(sorted_users):
         value = user_data.get(key, 0)
         name = user_data.get("name", f"ID{user_id}")
         text += f"{i+1}. {name}: {value}\n"
+        markup.add(types.InlineKeyboardButton(f"👤 {name}", callback_data=f"view_profile_{user_id}"))
     
     if not sorted_users:
         text += "Пока нет данных"
     
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
+    markup.row(
         types.InlineKeyboardButton("💰 Очки", callback_data="lb_points"),
         types.InlineKeyboardButton("🎁 Подарки", callback_data="lb_gifts")
     )
-    markup.add(
+    markup.row(
         types.InlineKeyboardButton("🏆 5/5 квизы", callback_data="lb_perfect"),
         types.InlineKeyboardButton("✅ Ответы", callback_data="lb_answers")
     )
+    markup.row(
+        types.InlineKeyboardButton("⭐ Уровни", callback_data="lb_levels")
+    )
     
-    bot.edit_message_text(text + "\n📊 Выберите категорию:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(text + "\n📊 Выберите категорию или профиль:", call.message.chat.id, call.message.message_id, reply_markup=markup)
     try:
         bot.answer_callback_query(call.id)
     except:
         pass
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("view_profile_"))
+def view_profile(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    user_id = call.data.split("_", 2)[2]
+    data = load_data()
+    user = data["users"].get(user_id, {})
+    
+    if not user:
+        bot.answer_callback_query(call.id, "❌ Пользователь не найден")
+        return
+    
+    photo = user.get("photo")
+    name = user.get("name", "Пользователь")
+    class_name = user.get("class", "Не указан")
+    points = user.get("points", 0)
+    perfect = user.get("perfect_quizzes", 0)
+    correct = user.get("correct_answers", 0)
+    gifts = user.get("gifts_bought", 0)
+    xp = user.get("xp", 0)
+    level = user.get("level", 0)
+    next_level_xp = calculate_xp_for_next_level(level)
+    
+    text = f"👤 {name}\n📚 Класс: {class_name}\n⭐ Уровень: {level} ({xp}/{next_level_xp} XP)\n\n💰 Очки: {points}\n🏆 Идеальных квизов: {perfect}\n✅ Правильных ответов: {correct}\n🎁 Куплено подарков: {gifts}"
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("◀️ Назад к рейтингу", callback_data="back_to_lb"))
+    
+    if photo:
+        bot.send_photo(call.message.chat.id, photo, caption=text, reply_markup=markup)
+    else:
+        bot.send_message(call.message.chat.id, text, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "back_to_lb")
+def back_to_leaderboard(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
+    
+    data = load_data()
+    sorted_users = sorted(data["users"].items(), key=lambda x: x[1].get("points", 0), reverse=True)[:10]
+    
+    text = "💰 Топ-10 по очкам\n\n"
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    for i, (user_id, user_data) in enumerate(sorted_users):
+        value = user_data.get("points", 0)
+        name = user_data.get("name", f"ID{user_id}")
+        text += f"{i+1}. {name}: {value}\n"
+        markup.add(types.InlineKeyboardButton(f"👤 {name}", callback_data=f"view_profile_{user_id}"))
+    
+    if not sorted_users:
+        text += "Пока нет данных"
+    
+    markup.row(
+        types.InlineKeyboardButton("💰 Очки", callback_data="lb_points"),
+        types.InlineKeyboardButton("🎁 Подарки", callback_data="lb_gifts")
+    )
+    markup.row(
+        types.InlineKeyboardButton("🏆 5/5 квизы", callback_data="lb_perfect"),
+        types.InlineKeyboardButton("✅ Ответы", callback_data="lb_answers")
+    )
+    markup.row(
+        types.InlineKeyboardButton("⭐ Уровни", callback_data="lb_levels")
+    )
+    
+    bot.send_message(call.message.chat.id, text + "\n📊 Выберите категорию или профиль:", reply_markup=markup)
 
 
 @bot.message_handler(commands=['quiz'])
@@ -833,7 +1009,10 @@ def handle_matching(call):
             # Все пары выбраны, проверяем ответ
             user_answer = ", ".join(state["selections"])
             correct = q["ans"].replace(" ", "")
-            user_clean = user_answer.replace(" ", "")
+            
+            # Преобразуем в множества пар для сравнения независимо от порядка
+            user_pairs = set(pair.strip() for pair in user_answer.replace(" ", "").split(","))
+            correct_pairs = set(pair.strip() for pair in correct.split(","))
             
             quiz["answers"].append(user_answer)
             
@@ -842,10 +1021,12 @@ def handle_matching(call):
             except:
                 pass
             
-            if user_clean.lower() == correct.lower():
+            if user_pairs == correct_pairs:
                 quiz["score"] += 1
-                quiz["points_earned"] = quiz.get("points_earned", 0) + 3  # +2 очка за сложный вопрос + 1 за правильный
-                msg = bot.send_message(chat_id, "✅ Правильно! +3 очка")
+                multiplier = get_difficulty_multiplier()
+                complex_points = multiplier + 2  # +2 за сложность вопроса
+                quiz["points_earned"] = quiz.get("points_earned", 0) + complex_points
+                msg = bot.send_message(chat_id, f"✅ Правильно! +{complex_points} {'очко' if complex_points == 1 else 'очка' if complex_points < 5 else 'очков'}")
             else:
                 msg = bot.send_message(chat_id, f"❌ Неправильно. Правильный ответ: {q['ans']}")
             
@@ -947,8 +1128,10 @@ def handle_sequence(call):
         
         if user_clean.lower() == correct.lower():
             quiz["score"] += 1
-            quiz["points_earned"] = quiz.get("points_earned", 0) + 3
-            msg = bot.send_message(chat_id, "✅ Правильно! +3 очка")
+            multiplier = get_difficulty_multiplier()
+            complex_points = multiplier + 2
+            quiz["points_earned"] = quiz.get("points_earned", 0) + complex_points
+            msg = bot.send_message(chat_id, f"✅ Правильно! +{complex_points} {'очко' if complex_points == 1 else 'очка' if complex_points < 5 else 'очков'}")
         else:
             msg = bot.send_message(chat_id, f"❌ Неправильно. Правильный ответ: {q['ans']}")
         
@@ -973,10 +1156,13 @@ def handle_sequence(call):
         
         sequence_text = " → ".join(quiz["sequence_order"])
         items_text = "\n".join(q["items"])
-        bot.edit_message_text(
-            f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n{items_text}\n\nПоследовательность: {sequence_text}\n👆 Выберите следующий элемент:",
-            chat_id, call.message.message_id, reply_markup=markup
-        )
+        try:
+            bot.edit_message_text(
+                f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n{items_text}\n\nПоследовательность: {sequence_text}\n👆 Выберите следующий элемент:",
+                chat_id, call.message.message_id, reply_markup=markup
+            )
+        except:
+            pass
         try:
             bot.answer_callback_query(call.id)
         except:
@@ -1014,9 +1200,10 @@ def check_answer(call):
     
     if answer == correct or (len(answer) == 1 and answer == correct[0]):
         quiz["score"] += 1
-        quiz["points_earned"] = quiz.get("points_earned", 0) + 1  # +1 очко за правильный ответ
+        multiplier = get_difficulty_multiplier()
+        quiz["points_earned"] = quiz.get("points_earned", 0) + multiplier
         try:
-            bot.answer_callback_query(call.id, "✅ Правильно!")
+            bot.answer_callback_query(call.id, f"✅ Правильно! +{multiplier}")
         except:
             pass
     else:
@@ -1079,8 +1266,10 @@ def process_open_answer(message, chat_id):
     
     if is_correct:
         quiz["score"] += 1
-        quiz["points_earned"] = quiz.get("points_earned", 0) + 3  # +2 очка за сложный вопрос + 1 за правильный
-        msg = bot.send_message(chat_id, "✅ Правильно! +3 очка")
+        multiplier = get_difficulty_multiplier()
+        complex_points = multiplier + 2
+        quiz["points_earned"] = quiz.get("points_earned", 0) + complex_points
+        msg = bot.send_message(chat_id, f"✅ Правильно! +{complex_points} {'очко' if complex_points == 1 else 'очка' if complex_points < 5 else 'очков'}")
     else:
         msg = bot.send_message(chat_id, f"❌ Неправильно. Правильный ответ: {q['ans']}")
     
@@ -1130,8 +1319,10 @@ def process_matching_answer(message, chat_id):
     
     if user_clean.lower() == correct.lower():
         quiz["score"] += 1
-        quiz["points_earned"] = quiz.get("points_earned", 0) + 3
-        msg = bot.send_message(chat_id, "✅ Правильно! +3 очка")
+        multiplier = get_difficulty_multiplier()
+        complex_points = multiplier + 2
+        quiz["points_earned"] = quiz.get("points_earned", 0) + complex_points
+        msg = bot.send_message(chat_id, f"✅ Правильно! +{complex_points} {'очко' if complex_points == 1 else 'очка' if complex_points < 5 else 'очков'}")
     else:
         msg = bot.send_message(chat_id, f"❌ Неправильно. Правильный ответ: {q['ans']}")
     
@@ -1182,8 +1373,10 @@ def process_sequence_answer(message, chat_id):
     
     if user_clean.lower() == correct.lower():
         quiz["score"] += 1
-        quiz["points_earned"] = quiz.get("points_earned", 0) + 3
-        msg = bot.send_message(chat_id, "✅ Правильно! +3 очка")
+        multiplier = get_difficulty_multiplier()
+        complex_points = multiplier + 2
+        quiz["points_earned"] = quiz.get("points_earned", 0) + complex_points
+        msg = bot.send_message(chat_id, f"✅ Правильно! +{complex_points} {'очко' if complex_points == 1 else 'очка' if complex_points < 5 else 'очков'}")
     else:
         msg = bot.send_message(chat_id, f"❌ Неправильно. Правильный ответ: {q['ans']}")
     
@@ -1200,6 +1393,16 @@ def process_sequence_answer(message, chat_id):
     else:
         finish_quiz(chat_id, message.from_user)
         finish_quiz(chat_id, message.from_user)
+
+
+def calculate_level(xp):
+    """Вычисляет уровень по опыту (100 XP = 1 уровень)"""
+    return xp // 100
+
+
+def calculate_xp_for_next_level(level):
+    """Вычисляет XP для следующего уровня"""
+    return (level + 1) * 100
 
 
 def finish_quiz(chat_id, user):
@@ -1226,7 +1429,7 @@ def finish_quiz(chat_id, user):
     user_id = str(chat_id)
     
     if user_id not in data["users"]:
-        data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(user), "last_quiz": "", "registered": True}
+        data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(user), "last_quiz": "", "registered": True, "xp": 0, "level": 0}
     
     # Сохраняем ответы пользователя для текущего квиза
     data["users"][user_id]["last_quiz_answers"] = {
@@ -1241,6 +1444,25 @@ def finish_quiz(chat_id, user):
     data["users"][user_id]["last_quiz"] = quiz.get("start_date")
     data["users"][user_id]["points"] += total_points
     
+    # Система уровней
+    old_level = data["users"][user_id].get("level", 0)
+    xp_gained = 0
+    level_up_bonus = 0
+    
+    if quiz["score"] == len(quiz["questions"]):
+        xp_gained = 100  # +100 XP за идеальный квиз
+        data["users"][user_id]["xp"] = data["users"][user_id].get("xp", 0) + xp_gained
+        data["users"][user_id]["perfect_quizzes"] = data["users"][user_id].get("perfect_quizzes", 0) + 1
+        
+        new_level = calculate_level(data["users"][user_id]["xp"])
+        data["users"][user_id]["level"] = new_level
+        
+        if new_level > old_level:
+            level_up_bonus = new_level * 10
+            data["users"][user_id]["points"] += level_up_bonus
+    
+    save_data(data)
+    
     subscribed = data.get("notifications", {}).get(user_id, True)
     
     # Краткий результат без деталей
@@ -1248,13 +1470,15 @@ def finish_quiz(chat_id, user):
     result_text += f"✅ Правильных ответов: {quiz['score']}/{len(quiz['questions'])}\n\n"
     
     if quiz["score"] == len(quiz["questions"]):
-        data["users"][user_id]["perfect_quizzes"] = data["users"][user_id].get("perfect_quizzes", 0) + 1
-        save_data(data)
-        result_text += f"🎁 Идеально! Вы получили {total_points} очков!\n"
+        result_text += f"🎁 Идеально! Вы получили {total_points} очков и {xp_gained} XP!\n"
         result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение, +{perfect_bonus} бонус)\n"
-        result_text += f"Всего очков: {data['users'][user_id]['points']}"
+        
+        if level_up_bonus > 0:
+            result_text += f"\n🎉 ПОВЫШЕНИЕ УРОВНЯ! Уровень {data['users'][user_id]['level']}!\n"
+            result_text += f"💰 Бонус за уровень: +{level_up_bonus} очков!\n"
+        
+        result_text += f"\nВсего очков: {data['users'][user_id]['points']}"
     else:
-        save_data(data)
         result_text += f"💰 Вы получили {total_points} очков!\n"
         result_text += f"(+{points_earned} за ответы, +{completion_bonus} за прохождение)\n"
         result_text += f"Всего очков: {data['users'][user_id]['points']}"
@@ -1302,9 +1526,11 @@ def get_admin_markup():
     markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
     markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
     markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
+    markup.add(types.InlineKeyboardButton("✏️ Редактировать квиз", callback_data="admin_edit_quiz"))
     markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
     markup.add(types.InlineKeyboardButton("📅 Установить дату", callback_data="admin_date"))
     markup.add(types.InlineKeyboardButton("📚 Тема/Предмет квиза", callback_data="admin_subject"))
+    markup.add(types.InlineKeyboardButton("⚙️ Уровень сложности", callback_data="admin_difficulty"))
     return markup
 
 
@@ -1340,19 +1566,18 @@ def admin_notify(call):
     
     today = get_current_date()
     if not daily_quiz or daily_quiz.get("date") != today:
-        bot.edit_message_text("❌ Квиз на сегодня еще не создан. Используйте /generate_quiz для создания.", call.message.chat.id, call.message.message_id)
+        try:
+            bot.edit_message_text("❌ Квиз на сегодня еще не создан. Используйте /generate_quiz для создания.", call.message.chat.id, call.message.message_id)
+        except:
+            pass
         return
     
     notify_users()
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
-    markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
-    markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
-    markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
-    markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
-    markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-    bot.edit_message_text("✅ Уведомления отправлены!\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    try:
+        bot.edit_message_text("✅ Уведомления отправлены!\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_regenerate")
@@ -1376,15 +1601,169 @@ def admin_regenerate(call):
     user_quizzes.clear()
     
     generate_daily_quiz()
+
+    try:
+        bot.edit_message_text("✅ Квиз пересоздан и уведомления отправлены!\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+    except:
+        pass
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_edit_quiz")
+def admin_edit_quiz(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    data = load_data()
+    quiz = data.get("daily_quiz", {})
+    questions = quiz.get("questions", [])
+    
+    if not questions:
+        bot.edit_message_text("❌ Квиз не найден. Сначала создайте квиз.", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+        return
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for i, q in enumerate(questions):
+        q_text = q.get("q", "")[:50]
+        markup.add(types.InlineKeyboardButton(f"{i+1}. {q_text}...", callback_data=f"edit_q_{i}"))
+    markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="admin_back"))
+    
+    bot.edit_message_text("✏️ Выберите вопрос для редактирования:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_q_"))
+def edit_question(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    q_index = int(call.data.split("_")[2])
+    data = load_data()
+    questions = data.get("daily_quiz", {}).get("questions", [])
+    
+    if q_index >= len(questions):
+        bot.answer_callback_query(call.id, "❌ Вопрос не найден")
+        return
+    
+    q = questions[q_index]
+    q_type = q.get("type", "")
+    
+    text = f"Вопрос {q_index+1}\nТип: {q_type}\n\n{q.get('q', '')}\n\n"
+    
+    if q_type == "multiple_choice":
+        text += "\n".join(q.get("opts", []))
+        text += f"\n\nОтвет: {q.get('ans', '')}"
+    elif q_type == "true_false":
+        text += f"Ответ: {q.get('ans', '')}"
+    elif q_type in ["matching", "sequence"]:
+        text += "\n".join(q.get("items", []))
+        text += f"\n\nОтвет: {q.get('ans', '')}"
     
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
-    markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
-    markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
-    markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
-    markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
-    markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-    bot.edit_message_text("✅ Квиз пересоздан и уведомления отправлены!\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    markup.add(types.InlineKeyboardButton("✏️ Изменить вопрос", callback_data=f"editq_text_{q_index}"))
+    markup.add(types.InlineKeyboardButton("✏️ Изменить ответ", callback_data=f"editq_ans_{q_index}"))
+    markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="admin_edit_quiz"))
+
+    try:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except:
+        pass
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("editq_text_"))
+def edit_question_text(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    q_index = int(call.data.split("_")[2])
+    try:
+        bot.edit_message_text(f"Введите новый текст вопроса {q_index+1}:", call.message.chat.id, call.message.message_id)
+    except:
+        pass
+    bot.register_next_step_handler(call.message, process_edit_question_text, q_index)
+
+
+def process_edit_question_text(message, q_index):
+    if message.chat.id != ADMIN_ID:
+        return
+    
+    new_text = message.text.strip()
+    data = load_data()
+    
+    if "daily_quiz" in data and "questions" in data["daily_quiz"]:
+        if q_index < len(data["daily_quiz"]["questions"]):
+            data["daily_quiz"]["questions"][q_index]["q"] = new_text
+            save_data(data)
+            
+            global daily_quiz
+            daily_quiz = data["daily_quiz"]
+            
+            bot.send_message(message.chat.id, f"✅ Вопрос {q_index+1} обновлен!\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
+        else:
+            bot.send_message(message.chat.id, "❌ Ошибка: вопрос не найден", reply_markup=get_admin_markup())
+    else:
+        bot.send_message(message.chat.id, "❌ Ошибка: квиз не найден", reply_markup=get_admin_markup())
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("editq_ans_"))
+def edit_question_answer(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    q_index = int(call.data.split("_")[2])
+    try:
+        bot.edit_message_text(f"Введите новый ответ для вопроса {q_index+1}:", call.message.chat.id, call.message.message_id)
+    except:
+        pass
+    bot.register_next_step_handler(call.message, process_edit_question_answer, q_index)
+
+
+def process_edit_question_answer(message, q_index):
+    if message.chat.id != ADMIN_ID:
+        return
+    
+    new_answer = message.text.strip()
+    data = load_data()
+    
+    if "daily_quiz" in data and "questions" in data["daily_quiz"]:
+        if q_index < len(data["daily_quiz"]["questions"]):
+            data["daily_quiz"]["questions"][q_index]["ans"] = new_answer
+            save_data(data)
+            
+            global daily_quiz
+            daily_quiz = data["daily_quiz"]
+            
+            bot.send_message(message.chat.id, f"✅ Ответ для вопроса {q_index+1} обновлен!\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
+        else:
+            bot.send_message(message.chat.id, "❌ Ошибка: вопрос не найден", reply_markup=get_admin_markup())
+    else:
+        bot.send_message(message.chat.id, "❌ Ошибка: квиз не найден", reply_markup=get_admin_markup())
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_back")
+def admin_back(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    bot.edit_message_text("🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_points")
@@ -1585,6 +1964,57 @@ def process_set_subject(message):
     save_data(data)
     
     bot.send_message(message.chat.id, f"✅ Предмет установлен: {subject}\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_difficulty")
+def admin_difficulty(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    data = load_data()
+    current_difficulty = data.get("quiz_difficulty", "Случайная")
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🎲 Случайная", callback_data="diff_random"))
+    markup.add(types.InlineKeyboardButton("🟢 Легкий", callback_data="diff_easy"))
+    markup.add(types.InlineKeyboardButton("🟡 Средний", callback_data="diff_medium"))
+    markup.add(types.InlineKeyboardButton("🔴 Сложный", callback_data="diff_hard"))
+    
+    bot.edit_message_text(f"⚙️ Текущий уровень: {current_difficulty}\n\nВыберите уровень сложности:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("diff_"))
+def set_difficulty(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    difficulty_map = {
+        "diff_random": None,
+        "diff_easy": "Легкий",
+        "diff_medium": "Средний",
+        "diff_hard": "Сложный"
+    }
+    
+    difficulty = difficulty_map.get(call.data)
+    data = load_data()
+    
+    if difficulty is None:
+        if "quiz_difficulty" in data:
+            del data["quiz_difficulty"]
+        save_data(data)
+        bot.edit_message_text("✅ Уровень сложности установлен: Случайная\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+    else:
+        data["quiz_difficulty"] = difficulty
+        save_data(data)
+        bot.edit_message_text(f"✅ Уровень сложности установлен: {difficulty}\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
 
 
 def process_set_date(message):
