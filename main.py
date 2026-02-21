@@ -103,7 +103,15 @@ def get_current_date():
 
 
 def get_today_holiday():
-    now = datetime.now()
+    data = load_data()
+    
+    # Используем override_date если установлена, иначе текущую дату
+    if "override_date" in data and data["override_date"]:
+        date_str = data["override_date"]
+        now = datetime.strptime(date_str, "%Y-%m-%d")
+    else:
+        now = datetime.now()
+    
     month = str(now.month)
     day = str(now.day)
     return holidays.get(month, {}).get(day, "День без праздника"), now.strftime("%d.%m.%Y")
