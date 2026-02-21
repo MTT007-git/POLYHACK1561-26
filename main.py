@@ -41,7 +41,7 @@ def load_data():
         with open('data.json', 'r', encoding='utf-8') as f:
             return json.load(f)
     except:
-        return {"users": {}, "gifts": [], "notifications": {}, "daily_quiz": {}}
+        return {"users": {}, "gifts": [], "notifications": {}, "daily_quiz": {}, "active_quizzes": {}}
 
 
 def save_data(data):
@@ -104,6 +104,38 @@ def get_user_name(user):
     if user.username:
         return f"@{user.username}"
     return user.first_name or f"ID{user.id}"
+
+
+def save_quiz_progress(chat_id):
+    """Сохраняет прогресс квиза в data.json"""
+    if chat_id not in user_quizzes:
+        return
+    
+    data = load_data()
+    if "active_quizzes" not in data:
+        data["active_quizzes"] = {}
+    
+    data["active_quizzes"][str(chat_id)] = user_quizzes[chat_id]
+    save_data(data)
+
+
+def restore_quiz_progress():
+    """Восстанавливает прогресс квизов при запуске бота"""
+    global user_quizzes
+    data = load_data()
+    
+    if "active_quizzes" in data:
+        for chat_id_str, quiz_data in data["active_quizzes"].items():
+            user_quizzes[int(chat_id_str)] = quiz_data
+        print(f"Восстановлено {len(data['active_quizzes'])} активных квизов")
+
+
+def clear_quiz_progress(chat_id):
+    """Удаляет прогресс квиза после завершения"""
+    data = load_data()
+    if "active_quizzes" in data and str(chat_id) in data["active_quizzes"]:
+        del data["active_quizzes"][str(chat_id)]
+        save_data(data)
 
 
 def get_current_date():
@@ -224,7 +256,18 @@ def generate_daily_quiz():
         data["previous_quiz"] = daily_quiz.copy()
         save_data(data)
     
-    prompt = f"""Сегодня {date}, праздник: {holiday}. Создай разнообразный квиз из 6 вопросов разных типов (НЕ про дату празднования):
+    # Проверяем, установлена ли кастомная тема или предмет
+    custom_theme = data.get("quiz_theme")
+    custom_subject = data.get("quiz_subject")
+    
+    if custom_theme:
+        topic = f"тема: {custom_theme}"
+    else:
+        topic = f"праздник: {holiday}"
+    
+    subject_filter = f" Все вопросы должны быть по предмету: {custom_subject}." if custom_subject else ""
+    
+    prompt = f"""Сегодня {date}, {topic}. Создай разнообразный квиз из 6 вопросов разных типов (НЕ про дату празднования).{subject_filter}
 
 1-2. Тип: multiple_choice
 Формат:
@@ -647,6 +690,9 @@ def send_question(chat_id):
     quiz = user_quizzes[chat_id]
     q = quiz["questions"][quiz["current"]]
     q_type = q.get("type", "multiple_choice")
+    
+    # Сохраняем прогресс в data.json
+    save_quiz_progress(chat_id)
     
     markup = types.InlineKeyboardMarkup()
     
@@ -1220,6 +1266,8 @@ def finish_quiz(chat_id, user):
     else:
         bot.send_message(chat_id, result_text)
     
+    # Очищаем прогресс квиза
+    clear_quiz_progress(chat_id)
     del user_quizzes[chat_id]
 
 
@@ -1256,6 +1304,7 @@ def get_admin_markup():
     markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
     markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
     markup.add(types.InlineKeyboardButton("📅 Установить дату", callback_data="admin_date"))
+    markup.add(types.InlineKeyboardButton("📚 Тема/Предмет квиза", callback_data="admin_subject"))
     return markup
 
 
@@ -1446,6 +1495,96 @@ def generate_quiz_cmd(message):
     bot.send_message(message.chat.id, "⏳ Генерирую квиз...")
     generate_daily_quiz()
     bot.send_message(message.chat.id, "✅ Квиз создан и уведомления отправлены!")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_subject")
+def admin_subject(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    data = load_data()
+    current_theme = data.get("quiz_theme", "Праздник дня")
+    current_subject = data.get("quiz_subject", "Все предметы")
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔄 По умолчанию", callback_data="subject_default"))
+    markup.add(types.InlineKeyboardButton("📝 Установить тему", callback_data="subject_theme"))
+    markup.add(types.InlineKeyboardButton("📚 Установить предмет", callback_data="subject_subject"))
+    
+    bot.edit_message_text(f"📚 Текущая тема: {current_theme}\n📖 Текущий предмет: {current_subject}\n\nВыберите действие:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "subject_default")
+def subject_default(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    data = load_data()
+    if "quiz_theme" in data:
+        del data["quiz_theme"]
+    if "quiz_subject" in data:
+        del data["quiz_subject"]
+    save_data(data)
+    
+    bot.edit_message_text("✅ Тема и предмет сброшены на значения по умолчанию\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "subject_theme")
+def subject_theme(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    bot.edit_message_text("Введите тему квиза:\nПример: Космос, Спорт, Музыка", call.message.chat.id, call.message.message_id)
+    bot.register_next_step_handler(call.message, process_set_theme)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "subject_subject")
+def subject_subject(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    bot.edit_message_text("Введите предмет:\nПример: История, Математика, Литература, География", call.message.chat.id, call.message.message_id)
+    bot.register_next_step_handler(call.message, process_set_subject)
+
+
+def process_set_theme(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    
+    theme = message.text.strip()
+    data = load_data()
+    data["quiz_theme"] = theme
+    save_data(data)
+    
+    bot.send_message(message.chat.id, f"✅ Тема установлена: {theme}\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
+
+
+def process_set_subject(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    
+    subject = message.text.strip()
+    data = load_data()
+    data["quiz_subject"] = subject
+    save_data(data)
+    
+    bot.send_message(message.chat.id, f"✅ Предмет установлен: {subject}\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
 
 
 def process_set_date(message):
@@ -1667,6 +1806,9 @@ data = load_data()
 if "daily_quiz" in data and data["daily_quiz"]:
     daily_quiz = data["daily_quiz"]
     print(f"Квиз загружен из data.json: {daily_quiz.get('holiday', 'неизвестно')}")
+
+# Восстановление активных квизов
+restore_quiz_progress()
 
 while True:
     try:
