@@ -66,7 +66,10 @@ def start_registration(call):
         bot.answer_callback_query(call.id)
     except:
         pass
-    bot.edit_message_text("Введите ваше имя и фамилию:", call.message.chat.id, call.message.message_id)
+    try:
+        bot.edit_message_text("Введите ваше имя и фамилию:", call.message.chat.id, call.message.message_id)
+    except:
+        pass
     bot.register_next_step_handler(call.message, process_name)
 
 
@@ -665,7 +668,10 @@ def subscribe(call):
         bot.answer_callback_query(call.id, "🔔 Вы подписались на уведомления")
     except:
         pass
-    bot.edit_message_text("Вы подписались на уведомления о новых квизах!", call.message.chat.id, call.message.message_id)
+    try:
+        bot.edit_message_text("Вы подписались на уведомления о новых квизах!", call.message.chat.id, call.message.message_id)
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('lb_'))
@@ -717,8 +723,11 @@ def show_leaderboard(call):
     markup.row(
         types.InlineKeyboardButton("⭐ Уровни", callback_data="lb_levels")
     )
-    
-    bot.edit_message_text(text + "\n📊 Выберите категорию или профиль:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    try:
+        bot.edit_message_text(text + "\n📊 Выберите категорию или профиль:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except:
+        pass
     try:
         bot.answer_callback_query(call.id)
     except:
@@ -980,10 +989,13 @@ def handle_matching(call):
             )
         
         items_text = "\n".join(q["items"])
-        bot.edit_message_text(
-            f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n{items_text}\n\nВыбрано: {left_choice}\n👆 Теперь выберите справа:",
-            chat_id, call.message.message_id, reply_markup=markup
-        )
+        try:
+            bot.edit_message_text(
+                f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n{items_text}\n\nВыбрано: {left_choice}\n👆 Теперь выберите справа:",
+                chat_id, call.message.message_id, reply_markup=markup
+            )
+        except:
+            pass
         try:
             bot.answer_callback_query(call.id, f"Выбрано: {left_choice}. Теперь выберите справа.")
         except:
@@ -1072,10 +1084,13 @@ def handle_matching(call):
             
             selections_text = ", ".join(state["selections"])
             items_text = "\n".join(q["items"])
-            bot.edit_message_text(
-                f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n{items_text}\n\nВыбрано: {selections_text}\n👆 Выберите следующую пару:",
-                chat_id, call.message.message_id, reply_markup=markup
-            )
+            try:
+                bot.edit_message_text(
+                    f"❓ Вопрос {quiz['current']+1}/{len(quiz['questions'])}:\n\n{q['q']}\n{items_text}\n\nВыбрано: {selections_text}\n👆 Выберите следующую пару:",
+                    chat_id, call.message.message_id, reply_markup=markup
+                )
+            except:
+                pass
             try:
                 bot.answer_callback_query(call.id, f"Пара {left_choice}-{right_choice} добавлена")
             except:
@@ -1551,7 +1566,10 @@ def admin_add(call):
         bot.answer_callback_query(call.id)
     except:
         pass
-    bot.edit_message_text("Введите данные подарка в формате:\nНазвание|Цена", call.message.chat.id, call.message.message_id)
+    try:
+        bot.edit_message_text("Введите данные подарка в формате:\nНазвание|Цена", call.message.chat.id, call.message.message_id)
+    except:
+        pass
     bot.register_next_step_handler(call.message, process_add_gift)
 
 
@@ -1622,7 +1640,10 @@ def admin_edit_quiz(call):
     questions = quiz.get("questions", [])
     
     if not questions:
-        bot.edit_message_text("❌ Квиз не найден. Сначала создайте квиз.", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+        try:
+            bot.edit_message_text("❌ Квиз не найден. Сначала создайте квиз.", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+        except:
+            pass
         return
     
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -1630,8 +1651,11 @@ def admin_edit_quiz(call):
         q_text = q.get("q", "")[:50]
         markup.add(types.InlineKeyboardButton(f"{i+1}. {q_text}...", callback_data=f"edit_q_{i}"))
     markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="admin_back"))
-    
-    bot.edit_message_text("✏️ Выберите вопрос для редактирования:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    try:
+        bot.edit_message_text("✏️ Выберите вопрос для редактирования:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_q_"))
@@ -1762,8 +1786,11 @@ def admin_back(call):
         bot.answer_callback_query(call.id)
     except:
         pass
-    
-    bot.edit_message_text("🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+
+    try:
+        bot.edit_message_text("🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_points")
@@ -1781,8 +1808,11 @@ def admin_points(call):
         name = user_data.get("name", f"ID{user_id}")
         points = user_data.get("points", 0)
         text += f"`{name}` - {points} очков\n"
-    
-    bot.edit_message_text(text + "\nВведите имя пользователя и количество очков через |:\nПример: Иван Иванов|10", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+
+    try:
+        bot.edit_message_text(text + "\nВведите имя пользователя и количество очков через |:\nПример: Иван Иванов|10", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    except:
+        pass
     bot.register_next_step_handler(call.message, process_add_points)
 
 
@@ -1801,8 +1831,11 @@ def admin_date(call):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔄 Автоматически", callback_data="date_auto"))
     markup.add(types.InlineKeyboardButton("📝 Установить вручную", callback_data="date_manual"))
-    
-    bot.edit_message_text(f"📅 Текущая дата: {current_date}\n\nВыберите режим:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    try:
+        bot.edit_message_text(f"📅 Текущая дата: {current_date}\n\nВыберите режим:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "date_auto")
@@ -1827,7 +1860,10 @@ def date_auto(call):
     markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
     markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
     markup.add(types.InlineKeyboardButton("📅 Установить дату", callback_data="admin_date"))
-    bot.edit_message_text("✅ Дата установлена на автоматическую\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    try:
+        bot.edit_message_text("✅ Дата установлена на автоматическую\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "date_manual")
@@ -1838,8 +1874,11 @@ def date_manual(call):
         bot.answer_callback_query(call.id)
     except:
         pass
-    
-    bot.edit_message_text("Введите дату в формате ДД.ММ.ГГГГ:\nПример: 21.02.2026", call.message.chat.id, call.message.message_id)
+
+    try:
+        bot.edit_message_text("Введите дату в формате ДД.ММ.ГГГГ:\nПример: 21.02.2026", call.message.chat.id, call.message.message_id)
+    except:
+        pass
     bot.register_next_step_handler(call.message, process_set_date)
 
 
@@ -1859,9 +1898,12 @@ def admin_reset(call):
         last_quiz = user_data.get("last_quiz", "")
         status = "✅ Прошёл сегодня" if last_quiz == datetime.now().strftime("%Y-%m-%d") else "❌ Не проходил"
         text += f"`{name}` - {status}\n"
-    
-    bot.edit_message_text(text + "\nВведите имя пользователя:", call.message.chat.id, call.message.message_id,
-                          parse_mode="Markdown")
+
+    try:
+        bot.edit_message_text(text + "\nВведите имя пользователя:", call.message.chat.id, call.message.message_id,
+                              parse_mode="Markdown")
+    except:
+        pass
     bot.register_next_step_handler(call.message, process_reset_quiz)
 
 
@@ -1893,8 +1935,11 @@ def admin_subject(call):
     markup.add(types.InlineKeyboardButton("🔄 По умолчанию", callback_data="subject_default"))
     markup.add(types.InlineKeyboardButton("📝 Установить тему", callback_data="subject_theme"))
     markup.add(types.InlineKeyboardButton("📚 Установить предмет", callback_data="subject_subject"))
-    
-    bot.edit_message_text(f"📚 Текущая тема: {current_theme}\n📖 Текущий предмет: {current_subject}\n\nВыберите действие:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    try:
+        bot.edit_message_text(f"📚 Текущая тема: {current_theme}\n📖 Текущий предмет: {current_subject}\n\nВыберите действие:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "subject_default")
@@ -1912,8 +1957,11 @@ def subject_default(call):
     if "quiz_subject" in data:
         del data["quiz_subject"]
     save_data(data)
-    
-    bot.edit_message_text("✅ Тема и предмет сброшены на значения по умолчанию\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+
+    try:
+        bot.edit_message_text("✅ Тема и предмет сброшены на значения по умолчанию\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "subject_theme")
@@ -1924,8 +1972,11 @@ def subject_theme(call):
         bot.answer_callback_query(call.id)
     except:
         pass
-    
-    bot.edit_message_text("Введите тему квиза:\nПример: Космос, Спорт, Музыка", call.message.chat.id, call.message.message_id)
+
+    try:
+        bot.edit_message_text("Введите тему квиза:\nПример: Космос, Спорт, Музыка", call.message.chat.id, call.message.message_id)
+    except:
+        pass
     bot.register_next_step_handler(call.message, process_set_theme)
 
 
@@ -1937,8 +1988,11 @@ def subject_subject(call):
         bot.answer_callback_query(call.id)
     except:
         pass
-    
-    bot.edit_message_text("Введите предмет:\nПример: История, Математика, Литература, География", call.message.chat.id, call.message.message_id)
+
+    try:
+        bot.edit_message_text("Введите предмет:\nПример: История, Математика, Литература, География", call.message.chat.id, call.message.message_id)
+    except:
+        pass
     bot.register_next_step_handler(call.message, process_set_subject)
 
 
@@ -1983,8 +2037,11 @@ def admin_difficulty(call):
     markup.add(types.InlineKeyboardButton("🟢 Легкий", callback_data="diff_easy"))
     markup.add(types.InlineKeyboardButton("🟡 Средний", callback_data="diff_medium"))
     markup.add(types.InlineKeyboardButton("🔴 Сложный", callback_data="diff_hard"))
-    
-    bot.edit_message_text(f"⚙️ Текущий уровень: {current_difficulty}\n\nВыберите уровень сложности:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    try:
+        bot.edit_message_text(f"⚙️ Текущий уровень: {current_difficulty}\n\nВыберите уровень сложности:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except:
+        pass
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("diff_"))
@@ -2010,11 +2067,17 @@ def set_difficulty(call):
         if "quiz_difficulty" in data:
             del data["quiz_difficulty"]
         save_data(data)
-        bot.edit_message_text("✅ Уровень сложности установлен: Случайная\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+        try:
+            bot.edit_message_text("✅ Уровень сложности установлен: Случайная\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+        except:
+            pass
     else:
         data["quiz_difficulty"] = difficulty
         save_data(data)
-        bot.edit_message_text(f"✅ Уровень сложности установлен: {difficulty}\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+        try:
+            bot.edit_message_text(f"✅ Уровень сложности установлен: {difficulty}\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+        except:
+            pass
 
 
 def process_set_date(message):
@@ -2156,7 +2219,10 @@ def admin_list(call):
     markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
     markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
     markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-    bot.edit_message_text(text + "\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    try:
+        bot.edit_message_text(text + "\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except:
+        pass
 
 
 @bot.message_handler(commands=['shop'])
