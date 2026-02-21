@@ -20,6 +20,18 @@ API_KEY = os.getenv("API_KEY")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 GEN_TIME = os.getenv("GEN_TIME", "10:00")
 
+# Важные праздники с бонусными очками
+SPECIAL_HOLIDAYS = {
+    "1-1": {"name": "Новый год", "points": 10},
+    "2-14": {"name": "День святого Валентина", "points": 5},
+    "2-23": {"name": "День защитника Отечества", "points": 5},
+    "3-8": {"name": "Международный женский день", "points": 5},
+    "5-1": {"name": "Праздник Весны и Труда", "points": 5},
+    "5-9": {"name": "День Победы", "points": 10},
+    "6-12": {"name": "День России", "points": 5},
+    "12-31": {"name": "Канун Нового года", "points": 10}
+}
+
 with open('praz.json', 'r', encoding='utf-8') as f:
     holidays = json.load(f)
 
@@ -274,12 +286,21 @@ def notify_users():
     data = load_data()
     holiday = daily_quiz.get("holiday", "праздник")
     
+    # Проверяем, является ли сегодня особым праздником
+    today_date = get_current_date()
+    date_obj = datetime.strptime(today_date, "%Y-%m-%d")
+    holiday_key = f"{date_obj.month}-{date_obj.day}"
+    
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎯 Пройти квиз", callback_data="start_quiz"))
     
     # Добавляем кнопку с ответами на предыдущий квиз
     if "previous_quiz" in data and data["previous_quiz"]:
         markup.add(types.InlineKeyboardButton("📝 Ответы на предыдущий квиз", callback_data="show_prev_answers"))
+    
+    # Добавляем кнопку для получения бонуса в особые праздники
+    if holiday_key in SPECIAL_HOLIDAYS:
+        markup.add(types.InlineKeyboardButton(f"🎁 Получить {SPECIAL_HOLIDAYS[holiday_key]['points']} очков", callback_data=f"claim_holiday_{holiday_key}"))
     
     markup.add(types.InlineKeyboardButton("🔕 Отписаться", callback_data="unsubscribe"))
     
@@ -343,6 +364,43 @@ def show_prev_answers(call):
             text += f"✅ Правильный ответ: {q['ans']}\n\n"
     
     bot.send_message(call.message.chat.id, text)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("claim_holiday_"))
+def claim_holiday_bonus(call):
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
+    
+    holiday_key = call.data.replace("claim_holiday_", "")
+    
+    if holiday_key not in SPECIAL_HOLIDAYS:
+        bot.send_message(call.message.chat.id, "❌ Неверный праздник")
+        return
+    
+    data = load_data()
+    user_id = str(call.message.chat.id)
+    today = get_current_date()
+    
+    # Проверяем, не получал ли пользователь уже бонус сегодня
+    claimed_key = f"holiday_claimed_{holiday_key}"
+    if user_id in data["users"] and data["users"][user_id].get(claimed_key) == today:
+        bot.send_message(call.message.chat.id, "❌ Вы уже получили бонус за этот праздник сегодня!")
+        return
+    
+    # Начисляем очки
+    if user_id not in data["users"]:
+        data["users"][user_id] = {"points": 0, "perfect_quizzes": 0, "correct_answers": 0, "gifts_bought": 0, "name": get_user_name(call.from_user), "last_quiz": "", "registered": True}
+    
+    bonus_points = SPECIAL_HOLIDAYS[holiday_key]["points"]
+    holiday_name = SPECIAL_HOLIDAYS[holiday_key]["name"]
+    
+    data["users"][user_id]["points"] = data["users"][user_id].get("points", 0) + bonus_points
+    data["users"][user_id][claimed_key] = today
+    save_data(data)
+    
+    bot.send_message(call.message.chat.id, f"🎉 Поздравляем с праздником {holiday_name}!\n\n🎁 Вы получили {bonus_points} очков!\nВсего очков: {data['users'][user_id]['points']}")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "unsubscribe")
