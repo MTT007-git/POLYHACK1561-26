@@ -1851,17 +1851,8 @@ def date_auto(call):
     if "override_date" in data:
         del data["override_date"]
     save_data(data)
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
-    markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
-    markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
-    markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
-    markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
-    markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-    markup.add(types.InlineKeyboardButton("📅 Установить дату", callback_data="admin_date"))
     try:
-        bot.edit_message_text("✅ Дата установлена на автоматическую\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.edit_message_text("✅ Дата установлена на автоматическую\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
     except:
         pass
 
@@ -2093,16 +2084,8 @@ def process_set_date(message):
         data = load_data()
         data["override_date"] = formatted_date
         save_data(data)
-        
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
-        markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
-        markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
-        markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
-        markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
-        markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-        markup.add(types.InlineKeyboardButton("📅 Установить дату", callback_data="admin_date"))
-        bot.send_message(message.chat.id, f"✅ Дата установлена: {date_str}\n\n🔧 Админ-панель", reply_markup=markup)
+
+        bot.send_message(message.chat.id, f"✅ Дата установлена: {date_str}\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
     except:
         bot.send_message(message.chat.id, "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ")
 
@@ -2124,15 +2107,8 @@ def process_add_points(message):
         if found_user_id:
             data["users"][found_user_id]["points"] = data["users"][found_user_id].get("points", 0) + points
             save_data(data)
-            
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
-            markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
-            markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
-            markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
-            markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
-            markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-            bot.send_message(message.chat.id, f"✅ Начислено {points} очков пользователю {name.strip()}. Всего: {data['users'][found_user_id]['points']}\n\n🔧 Админ-панель", reply_markup=markup)
+
+            bot.send_message(message.chat.id, f"✅ Начислено {points} очков пользователю {name.strip()}. Всего: {data['users'][found_user_id]['points']}\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
         else:
             bot.send_message(message.chat.id, "❌ Пользователь не найден")
     except:
@@ -2147,15 +2123,8 @@ def process_add_gift(message):
         data = load_data()
         data["gifts"].append({"name": name.strip(), "price": int(price.strip())})
         save_data(data)
-        
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
-        markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
-        markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
-        markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
-        markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
-        markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-        bot.send_message(message.chat.id, f"✅ Подарок '{name}' добавлен за {price} очков\n\n🔧 Админ-панель", reply_markup=markup)
+
+        bot.send_message(message.chat.id, f"✅ Подарок '{name}' добавлен за {price} очков\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
     except:
         bot.send_message(message.chat.id, "❌ Ошибка формата")
 
@@ -2181,15 +2150,8 @@ def process_reset_quiz(message):
             # Также удаляем активный квиз если он есть
             if int(found_user_id) in user_quizzes:
                 del user_quizzes[int(found_user_id)]
-            
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
-            markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
-            markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
-            markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
-            markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
-            markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
-            bot.send_message(message.chat.id, f"✅ Квиз сброшен для пользователя {search_name}\n\n🔧 Админ-панель", reply_markup=markup)
+
+            bot.send_message(message.chat.id, f"✅ Квиз сброшен для пользователя {search_name}\n\n🔧 Админ-панель", reply_markup=get_admin_markup())
         else:
             bot.send_message(message.chat.id, "❌ Пользователь не найден")
     except:
@@ -2207,22 +2169,43 @@ def admin_list(call):
     data = load_data()
     if not data["gifts"]:
         text = "📋 Подарков нет"
+        try:
+            bot.edit_message_text(text + "\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+        except:
+            pass
     else:
         text = "📋 Список подарков:\n\n"
+        markup = types.InlineKeyboardMarkup(row_width=1)
         for i, g in enumerate(data["gifts"]):
             text += f"{i+1}. {g['name']} - {g['price']} очков\n"
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("➕ Добавить подарок", callback_data="admin_add"))
-    markup.add(types.InlineKeyboardButton("📋 Список подарков", callback_data="admin_list"))
-    markup.add(types.InlineKeyboardButton("🔄 Сбросить квиз игроку", callback_data="admin_reset"))
-    markup.add(types.InlineKeyboardButton("📢 Уведомить о квизе", callback_data="admin_notify"))
-    markup.add(types.InlineKeyboardButton("🔄 Пересоздать квиз", callback_data="admin_regenerate"))
-    markup.add(types.InlineKeyboardButton("💰 Начислить очки", callback_data="admin_points"))
+            markup.add(types.InlineKeyboardButton(f"🗑️ Удалить: {g['name']}", callback_data=f"delete_gift_{i}"))
+        markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="admin_back"))
+        
+        try:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+        except:
+            pass
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delete_gift_"))
+def delete_gift(call):
+    if call.message.chat.id != ADMIN_ID:
+        return
     try:
-        bot.edit_message_text(text + "\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.answer_callback_query(call.id)
     except:
         pass
+    
+    gift_index = int(call.data.split("_")[2])
+    data = load_data()
+    
+    if gift_index < len(data["gifts"]):
+        gift_name = data["gifts"][gift_index]["name"]
+        del data["gifts"][gift_index]
+        save_data(data)
+        bot.edit_message_text(f"✅ Подарок '{gift_name}' удален!\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
+    else:
+        bot.edit_message_text("❌ Подарок не найден\n\n🔧 Админ-панель", call.message.chat.id, call.message.message_id, reply_markup=get_admin_markup())
 
 
 @bot.message_handler(commands=['shop'])
@@ -2308,7 +2291,7 @@ restore_quiz_progress()
 
 while True:
     try:
-        bot.polling()
+        bot.infinity_polling()
         break
     except Exception as e:
         print(f"Exception: {e}")
